@@ -1,67 +1,96 @@
+<p align="center">
+  <img src="assets/readme-hero.svg" alt="Uzavirka AI branded project banner" width="100%">
+</p>
+
 # Uzavirka AI
 
-**1st place hackathon project for the AI Startup track at the Czech AI Olympiad regional round.**
+**From permit guesswork to risk-ranked closure decisions in 60 seconds.**
 
-Uzavirka AI is a decision-support simulator for municipal road closures in Stredocesky kraj. It helps a city officer decide whether a planned closure should be approved, moved to a better time window, or escalated for mitigation before it creates avoidable congestion.
+Uzavirka AI is a first-place hackathon project from the AI Startup track at the Czech AI Olympiad regional round. It is a decision-support simulator for municipal road closures: an officer picks the planned closure, the app scores the risk, explains the drivers, finds a better time window, and shows the likely detour pressure on a map.
 
-[Watch demo video](assets/uzavirka-ai-demo.mp4) · [Open pitch deck](assets/uzavirka-ai-pitchdeck.pdf) · [Technical overview](TECHNICAL_OVERVIEW.md)
+Built for **Stredocesky kraj**. Piloted on **Mlada Boleslav**. Designed to scale to every ORP city that approves roadworks, repairs, and temporary closures.
+
+<p align="center">
+  <a href="assets/uzavirka-ai-demo.mp4"><strong>Watch demo</strong></a>
+  ·
+  <a href="assets/uzavirka-ai-pitchdeck.pdf"><strong>Open pitch deck</strong></a>
+  ·
+  <a href="TECHNICAL_OVERVIEW.md"><strong>Read technical overview</strong></a>
+  ·
+  <a href="https://www.aiolympiada.cz/krajska-kola"><strong>Competition page</strong></a>
+</p>
+
+## The Problem
+
+Road closures are approved with too much fragmented context. A transport officer may know the location and the planned time, but the real decision depends on traffic intensity, peak-hour pressure, public transport alternatives, P+R capacity, safety risk, and whether a reasonable detour exists.
+
+Bad timing turns a necessary repair into avoidable congestion.
+
+```text
+wrong closure window = wasted commuter hours + delayed buses + political heat
+```
+
+## The Product
+
+Uzavirka AI turns one planned closure into a clear operating decision.
+
+| Input | AI-assisted output |
+| --- | --- |
+| City, road segment, day, start hour, duration, closure type | Risk score from `0` to `100` |
+| Bus impact and local traffic context | Ranked reasons behind the score |
+| START and END clicks on the map | Closed segment, detour path, added travel time |
+| Current planned window | Safer alternative time windows |
+| Available data quality | Confidence and manual-review warning |
+
+The app does not automatically approve or reject permits. It gives officials an explainable recommendation they can challenge.
+
+## Demo
 
 [![Uzavirka AI demo thumbnail](assets/demo-thumbnail.jpg)](assets/uzavirka-ai-demo.mp4)
 
-## Why It Matters
+| Asset | Link |
+| --- | --- |
+| Product demo video | [`assets/uzavirka-ai-demo.mp4`](assets/uzavirka-ai-demo.mp4) |
+| Competition pitch deck | [`assets/uzavirka-ai-pitchdeck.pdf`](assets/uzavirka-ai-pitchdeck.pdf) |
+| Technical write-up | [`TECHNICAL_OVERVIEW.md`](TECHNICAL_OVERVIEW.md) |
+| Technical PDF | [`TECHNICAL_OVERVIEW.pdf`](TECHNICAL_OVERVIEW.pdf) |
 
-Municipal road closures are usually approved with fragmented context: traffic intensity, public transport alternatives, road safety, P+R capacity, timing, and local detours are reviewed separately or manually. A bad closure slot can create delay for thousands of commuters even when the work itself is necessary.
+## Why It Won
 
-Uzavirka AI turns the approval moment into a measurable decision:
+| Judging angle | What Uzavirka AI shows |
+| --- | --- |
+| Real regional problem | Municipal closures are a recurring approval workflow, not a one-off app idea. |
+| Concrete buyer | ORP cities, municipal transport departments, and silnicni spravni urady. |
+| Visible AI value | Transparent risk scoring, explanation, alternative-window ranking, and route-impact simulation. |
+| Practical demo | Mlada Boleslav OSM map picker with START/END snapping and recomputed detour. |
+| Ethical boundary | Advisory output, confidence notes, aggregate data, and manual review for weak data. |
+| Business path | B2G SaaS with setup fees for local data integration and regional reporting. |
 
-```text
-closure risk = traffic vulnerability + timing pressure + safety risk + detour impact + weak alternatives
+## How It Works
+
+```mermaid
+flowchart TD
+    A["Olympiad CSV traffic data"] --> B["Clean and merge"]
+    C["Municipality context"] --> B
+    D["OSM road geometry"] --> E["Local road graph"]
+    F["Optional regional traffic ZIPs"] --> G["External context"]
+    B --> H["Risk model"]
+    E --> H
+    G --> H
+    H --> I["Score, class, reasons"]
+    E --> J["Detour path and added delay"]
+    I --> K["Streamlit decision console"]
+    J --> K
 ```
 
-The output is not an automatic permit decision. It is an explainable recommendation for the human officer.
+## Risk Model
 
-## What The App Does
+The MVP uses a transparent traffic-vulnerability model. Each score is explainable and bounded.
 
-An officer enters:
-
-- city or municipality
-- road segment or map-selected closure
-- day of week
-- planned start hour
-- duration
-- closure type
-- whether bus service is affected
-
-The app returns:
-
-- risk score from `0` to `100`
-- risk class and approval recommendation
-- ranked explanation of the biggest risk drivers
-- comparison against a simple peak-hour baseline
-- better time-window suggestions
-- estimated affected trips, people, delay, and avoidable delay
-- local network impact: added distance, added travel time, affected edges, unreachable share
-- ethics and confidence notes
-
-## Competition Framing
-
-The project was built for the Czech AI Olympiad regional round, whose AI Startup track asks three-person teams to design an AI solution for a regional assignment with business potential. Uzavirka AI is anchored in Stredocesky kraj and the first demo scenario is Mlada Boleslav, but the method is transferable to other ORP cities and regions.
-
-## Demo Assets
-
-| Asset | File |
-| --- | --- |
-| Demo video | [`assets/uzavirka-ai-demo.mp4`](assets/uzavirka-ai-demo.mp4) |
-| Pitch deck | [`assets/uzavirka-ai-pitchdeck.pdf`](assets/uzavirka-ai-pitchdeck.pdf) |
-| Technical overview | [`TECHNICAL_OVERVIEW.md`](TECHNICAL_OVERVIEW.md) |
-| Technical overview PDF | [`TECHNICAL_OVERVIEW.pdf`](TECHNICAL_OVERVIEW.pdf) |
-
-## Core Model
-
-The MVP uses transparent traffic-vulnerability scoring rather than a black-box model. The score combines:
+Risk drivers:
 
 - vehicle count
-- flow index
+- traffic flow index
 - average speed versus free speed
 - morning or afternoon peak hour
 - collision-risk index
@@ -73,8 +102,6 @@ The MVP uses transparent traffic-vulnerability scoring rather than a black-box m
 - selected map detour impact, capped at 10 points
 - optional external traffic context, capped at 5 points
 
-Risk classes:
-
 | Score | Class | Recommendation |
 | ---: | --- | --- |
 | `0-30` | LOW | Approve |
@@ -84,78 +111,56 @@ Risk classes:
 
 ## Route Simulation
 
-For the Mlada Boleslav demo, the map picker uses OpenStreetMap road geometry:
+For the Mlada Boleslav demo, the app uses cached OpenStreetMap road geometry:
 
-1. The officer clicks a START point on the map.
-2. The officer clicks an END point on the same road.
-3. Python snaps both clicks to the nearest OSM road coordinate.
+1. Officer clicks START on the map.
+2. Officer clicks END on the same road.
+3. Python snaps both clicks to the nearest road coordinate.
 4. The selected road section is removed from a local `networkx` graph.
 5. The app recomputes the shortest available detour.
-6. The detour impact feeds back into the risk score and delay forecast.
+6. Added time and distance feed back into the risk score and delay forecast.
 
-The map colors are intentionally simple:
+Map language:
 
-- red: closed segment
-- orange: affected graph edges
-- green: recomputed detour
+- **red** = closed road section
+- **orange** = affected graph edges
+- **green** = recomputed detour
 
-## Data Sources
+## Data
 
-The MVP uses the AI Olympiad CSV files as the main dataset:
+Main AI Olympiad data:
 
 - `01_provoz_useky_gps.csv`
 - `02_obce_kontext.csv`
 - `03_simpleml_komplet.csv`
 
-It also supports optional external traffic context from `DOPR_D_YYYYMMDD.zip` files published by the Dopravni portal Stredoceskeho kraje. These ZIP files are treated as bounded validation context, not as historical closure-outcome labels.
+Optional external context:
 
-In production, the model should connect to:
+- `DOPR_D_YYYYMMDD.zip` regional traffic files
+- cached Mlada Boleslav OSM road geometries in `data/mlada_boleslav_osm_roads.json`
 
-- NDIC / DATEX roadworks, closures, incidents, and traffic events
-- PID GTFS and public transport alternatives
+Production upgrade path:
+
+- NDIC / DATEX incidents, restrictions, and roadworks
+- PID GTFS public transport alternatives
 - municipal closure history and approval outcomes
-- school calendars, large-employer shift timing, and major events
-- post-closure citizen and operator feedback
+- school calendars, large employer shift timing, and local events
+- post-closure feedback and calibration
 
-## Architecture
+## Stack
 
-```mermaid
-flowchart TD
-    A["Olympiad CSV files"] --> B["data_loading.py"]
-    B --> C["Merged project dataset"]
-    D["Cached or fetched OSM roads"] --> E["route_analysis.py"]
-    F["Optional DOPR_D ZIP files"] --> G["external_data.py"]
-    C --> H["risk_model.py"]
-    E --> H
-    G --> H
-    H --> I["Risk score, class, reasons, forecast"]
-    E --> J["Closure path, detour path, network impact"]
-    I --> K["Streamlit UI"]
-    J --> K
-```
-
-Runtime stack:
-
-- Python
-- Streamlit
-- pandas
-- networkx
-- folium
-- streamlit-folium
-- pydeck
-- pytest
+| Layer | Tools |
+| --- | --- |
+| UI | Streamlit, folium, streamlit-folium, pydeck |
+| Data | pandas, robust CSV normalization |
+| Routing | networkx, OSM road graph |
+| Model | transparent weighted scoring plus bounded context adjustments |
+| Tests | pytest / unittest |
 
 ## Quickstart
 
-Install dependencies:
-
 ```bash
 pip install -r requirements.txt
-```
-
-Run the app:
-
-```bash
 streamlit run app.py
 ```
 
@@ -168,21 +173,21 @@ pytest
 ## Repository Map
 
 ```text
-app.py                         Streamlit UI and workflow
-data_loading.py                CSV loading, normalization, and validation
+app.py                         Streamlit decision console
+data_loading.py                CSV loading, normalization, validation
 risk_model.py                  Risk score, recommendations, delay forecast
 route_analysis.py              Synthetic and OSM-backed route simulation
 osm_roads.py                   Mlada Boleslav OSM fetch/cache logic
 external_data.py               Optional traffic ZIP parser
 tests/                         Unit tests
-assets/                        Pitch deck, demo video, README thumbnail
+assets/                        Brand assets, pitch deck, demo video
 TECHNICAL_OVERVIEW.md          Detailed technical write-up
 ```
 
 ## Limits
 
-This is a hackathon MVP. It does not have historical closure-outcome labels, calibrated prediction intervals, live traffic ingestion, real turn restrictions, or a validated full-city traffic model. It should be read as a strong proof of concept for a municipal approval workflow, not as production-grade permitting automation.
+This is a hackathon MVP, not production permitting infrastructure. It does not yet include historical closure-outcome labels, calibrated prediction intervals, live traffic ingestion, full turn restrictions, or a validated city-scale traffic model. Its role is to prove a sharper workflow: make the risk visible before the closure is approved.
 
 ## Business Model
 
-The likely go-to-market is B2G SaaS for ORP cities and municipal transport departments, with setup fees for local data integration and optional regional reporting. The value is fewer badly timed closures, lower social delay costs, better bus reliability, and a reusable evidence base for future transport planning.
+Uzavirka AI is best sold as B2G SaaS for ORP cities and municipal transport departments, with setup fees for local data integration and optional regional reporting. The value is fewer badly timed closures, lower social delay costs, better bus reliability, and a reusable evidence base for transport planning.
