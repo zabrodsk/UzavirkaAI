@@ -1,10 +1,103 @@
-# Uzavírka AI
+# Uzavirka AI
 
-Uzavírka AI is a local MVP for municipal road-closure decision support in Středočeský kraj. It estimates the risk of a planned road or lane closure, builds a small local road graph around the selected segment, and shows the likely direction of detour pressure. It is a decision-support simulator for officials, not a production navigation engine or a validated full-city traffic model.
+**1st place hackathon project for the AI Startup track at the Czech AI Olympiad regional round.**
 
-## Target Customer
+Uzavirka AI is a decision-support simulator for municipal road closures in Stredocesky kraj. It helps a city officer decide whether a planned closure should be approved, moved to a better time window, or escalated for mitigation before it creates avoidable congestion.
 
-The target users are municipal transport departments, silniční správní úřady, and ORP cities. The first pilot scenario is Mladá Boleslav, with expansion potential to Kladno, Kolín, Příbram, Beroun, Mělník, and other medium-sized cities in Středočeský kraj.
+[Watch demo video](assets/uzavirka-ai-demo.mp4) · [Open pitch deck](assets/uzavirka-ai-pitchdeck.pdf) · [Technical overview](TECHNICAL_OVERVIEW.md)
+
+[![Uzavirka AI demo thumbnail](assets/demo-thumbnail.jpg)](assets/uzavirka-ai-demo.mp4)
+
+## Why It Matters
+
+Municipal road closures are usually approved with fragmented context: traffic intensity, public transport alternatives, road safety, P+R capacity, timing, and local detours are reviewed separately or manually. A bad closure slot can create delay for thousands of commuters even when the work itself is necessary.
+
+Uzavirka AI turns the approval moment into a measurable decision:
+
+```text
+closure risk = traffic vulnerability + timing pressure + safety risk + detour impact + weak alternatives
+```
+
+The output is not an automatic permit decision. It is an explainable recommendation for the human officer.
+
+## What The App Does
+
+An officer enters:
+
+- city or municipality
+- road segment or map-selected closure
+- day of week
+- planned start hour
+- duration
+- closure type
+- whether bus service is affected
+
+The app returns:
+
+- risk score from `0` to `100`
+- risk class and approval recommendation
+- ranked explanation of the biggest risk drivers
+- comparison against a simple peak-hour baseline
+- better time-window suggestions
+- estimated affected trips, people, delay, and avoidable delay
+- local network impact: added distance, added travel time, affected edges, unreachable share
+- ethics and confidence notes
+
+## Competition Framing
+
+The project was built for the Czech AI Olympiad regional round, whose AI Startup track asks three-person teams to design an AI solution for a regional assignment with business potential. Uzavirka AI is anchored in Stredocesky kraj and the first demo scenario is Mlada Boleslav, but the method is transferable to other ORP cities and regions.
+
+## Demo Assets
+
+| Asset | File |
+| --- | --- |
+| Demo video | [`assets/uzavirka-ai-demo.mp4`](assets/uzavirka-ai-demo.mp4) |
+| Pitch deck | [`assets/uzavirka-ai-pitchdeck.pdf`](assets/uzavirka-ai-pitchdeck.pdf) |
+| Technical overview | [`TECHNICAL_OVERVIEW.md`](TECHNICAL_OVERVIEW.md) |
+| Technical overview PDF | [`TECHNICAL_OVERVIEW.pdf`](TECHNICAL_OVERVIEW.pdf) |
+
+## Core Model
+
+The MVP uses transparent traffic-vulnerability scoring rather than a black-box model. The score combines:
+
+- vehicle count
+- flow index
+- average speed versus free speed
+- morning or afternoon peak hour
+- collision-risk index
+- public transport alternatives
+- P+R capacity
+- closure duration
+- closure type multiplier
+- bus route impact
+- selected map detour impact, capped at 10 points
+- optional external traffic context, capped at 5 points
+
+Risk classes:
+
+| Score | Class | Recommendation |
+| ---: | --- | --- |
+| `0-30` | LOW | Approve |
+| `31-60` | MEDIUM | Approve with mitigation |
+| `61-80` | HIGH | Reschedule or require strong mitigation |
+| `81-100` | CRITICAL | Do not approve without major changes |
+
+## Route Simulation
+
+For the Mlada Boleslav demo, the map picker uses OpenStreetMap road geometry:
+
+1. The officer clicks a START point on the map.
+2. The officer clicks an END point on the same road.
+3. Python snaps both clicks to the nearest OSM road coordinate.
+4. The selected road section is removed from a local `networkx` graph.
+5. The app recomputes the shortest available detour.
+6. The detour impact feeds back into the risk score and delay forecast.
+
+The map colors are intentionally simple:
+
+- red: closed segment
+- orange: affected graph edges
+- green: recomputed detour
 
 ## Data Sources
 
@@ -14,104 +107,82 @@ The MVP uses the AI Olympiad CSV files as the main dataset:
 - `02_obce_kontext.csv`
 - `03_simpleml_komplet.csv`
 
-The app first looks for these files in `data/`. If that folder is not present, it falls back to the project root, which matches the current GitHub repository layout.
+It also supports optional external traffic context from `DOPR_D_YYYYMMDD.zip` files published by the Dopravni portal Stredoceskeho kraje. These ZIP files are treated as bounded validation context, not as historical closure-outcome labels.
 
-The Dopravní portál Středočeského kraje publishes open traffic data in machine-readable format. The downloaded `DOPR_D_YYYYMMDD.zip` files are treated as optional external validation context and are not required for the MVP. In production, PID open data could provide GTFS/public transport data, and NDIC/DATEX could provide roadworks, closures, incidents, and traffic events.
+In production, the model should connect to:
 
-## How To Run
+- NDIC / DATEX roadworks, closures, incidents, and traffic events
+- PID GTFS and public transport alternatives
+- municipal closure history and approval outcomes
+- school calendars, large-employer shift timing, and major events
+- post-closure citizen and operator feedback
 
-Install dependencies, then start the Streamlit app:
+## Architecture
 
-```powershell
+```mermaid
+flowchart TD
+    A["Olympiad CSV files"] --> B["data_loading.py"]
+    B --> C["Merged project dataset"]
+    D["Cached or fetched OSM roads"] --> E["route_analysis.py"]
+    F["Optional DOPR_D ZIP files"] --> G["external_data.py"]
+    C --> H["risk_model.py"]
+    E --> H
+    G --> H
+    H --> I["Risk score, class, reasons, forecast"]
+    E --> J["Closure path, detour path, network impact"]
+    I --> K["Streamlit UI"]
+    J --> K
+```
+
+Runtime stack:
+
+- Python
+- Streamlit
+- pandas
+- networkx
+- folium
+- streamlit-folium
+- pydeck
+- pytest
+
+## Quickstart
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
+```
+
+Run the app:
+
+```bash
 streamlit run app.py
 ```
 
-If you use the bundled Codex Python runtime, replace `pip` with that environment's pip command.
+Run tests:
 
-## What The App Does
-
-The officer enters:
-
-- city / obec
-- road segment / `usek_id` if available
-- day of week
-- planned start hour
-- duration
-- closure type
-- whether a bus route is affected
-
-The app returns a risk score from 0 to 100, a risk class, a recommendation, ranked reasons, baseline comparison, better time windows, a simple ROI estimate, confidence, network impact metrics, likely detour paths, and an ethics note.
-
-The map route picker is interactive: the user clicks two snap points on a full map preview. The app treats those clicks as snapped points on the nearest local graph segment. If both points resolve to the same segment, that segment is used for prediction. The red layer is the closed segment, orange shows affected graph edges, and green shows the recomputed detour path. Current route geometries are deterministic local demo geometries built from the available `usek_id` rows and city coordinates; production should replace them with real road geometry and true GIS snapping.
-
-For the Mladá Boleslav demo, the picker uses OpenStreetMap road geometries. The first map click sets START, the second sets END, and both clicks are snapped in Python to the nearest road coordinate. When both snapped points are on the same OSM way, the section between them is removed from an OSM-backed graph and the app recomputes the shortest available detour.
-
-## Network Impact
-
-For the selected closure, the app compares the baseline shortest path with a recomputed path after removing the closed edge from a local `networkx` graph. It reports affected edges, added distance, added travel time, and the share of sampled routes that become unreachable. Edge weights use distance plus available speed, flow, and vehicle-volume indicators.
-
-## Risk Score
-
-The MVP uses transparent traffic-vulnerability scoring. Components include:
-
-- higher vehicle count
-- lower flow index
-- lower average speed
-- morning or afternoon peak hour
-- higher collision-risk index
-- weaker public transport alternatives
-- weaker P+R capacity
-- longer closure duration
-- closure type multiplier
-- bus route impact
-- selected map detour impact, capped at 10 risk points
-- optional external ZIP context, capped at 5 risk points
-
-Risk classes:
-
-- `0-30 LOW`: approve
-- `31-60 MEDIUM`: approve with mitigation
-- `61-80 HIGH`: reschedule or require strong mitigation
-- `81-100 CRITICAL`: do not approve without major changes
-
-## Baseline
-
-The baseline is intentionally simple: peak hour means high risk, shoulder hour means medium risk, and off-peak means low risk. ClosureImpact is better for this use case because it also uses segment-specific flow, vehicle count, speed, safety risk, duration, closure type, and mobility alternatives.
-
-## Better Time Windows
-
-For the same selected city or road segment, the app scans available rows and suggests the 2-3 lower-risk time windows. When scores are similar, workday off-peak hours around 10:00-13:00 are preferred.
-
-## ROI
-
-The MVP estimates social loss with:
-
-```text
-affected_people = vehicle_count * duration_hours * 1.2 passengers
-social_loss = affected_people * delay_minutes * value_of_time
+```bash
+pytest
 ```
 
-Delay minutes use the larger of the risk-class assumption and the selected map simulation's added travel time. Risk-class assumptions are LOW 2, MEDIUM 5, HIGH 10, CRITICAL 20. The default value of time is 200 CZK/hour. The app also shows possible savings if risk is reduced by 30%.
+## Repository Map
 
-## Use of external ZIP data
+```text
+app.py                         Streamlit UI and workflow
+data_loading.py                CSV loading, normalization, and validation
+risk_model.py                  Risk score, recommendations, delay forecast
+route_analysis.py              Synthetic and OSM-backed route simulation
+osm_roads.py                   Mlada Boleslav OSM fetch/cache logic
+external_data.py               Optional traffic ZIP parser
+tests/                         Unit tests
+assets/                        Pitch deck, demo video, README thumbnail
+TECHNICAL_OVERVIEW.md          Detailed technical write-up
+```
 
-ZIP files from Dopravní portál Středočeského kraje are optional external context. The MVP inspects up to three `DOPR_D_YYYYMMDD.zip` files from the project root or common data folders, parses compatible CSV/JSON/XML/TXT files, and summarizes date range, file types, detected columns, estimated records, and warnings.
+## Limits
 
-The ZIPs are not treated as historical closure outcome labels and do not dominate scoring. The main model still uses the Olympiad CSVs. If compatible traffic fields indicate elevated regional disruption context, the ZIP summary can add a small transparent adjustment of at most 5 risk points. If fields are missing or malformed, the app reports a warning and continues without the adjustment.
-
-## Limitations
-
-This MVP does not have real historical closure-outcome labels. It does not claim exact route diversion, precise travel-time impact, or full city simulation. The current model is a transparent risk score built from traffic vulnerability indicators. Low-data or unusual cases should be manually reviewed.
-
-## Production Data Plan
-
-A production version should retrain and validate against historical closure outcomes from municipal and regional systems, NDIC/DATEX roadworks and incidents, Dopravní portál Středočeského kraje feeds, PID GTFS/public transport data, school calendars, major employer shift timing, and citizen feedback after closures.
-
-## Ethics
-
-The MVP uses aggregate data only and avoids individual tracking. The AI is advisory, not an automatic approval system. The app shows confidence and explanations so officers can challenge the result. Data gaps should trigger manual review rather than blind automation.
+This is a hackathon MVP. It does not have historical closure-outcome labels, calibrated prediction intervals, live traffic ingestion, real turn restrictions, or a validated full-city traffic model. It should be read as a strong proof of concept for a municipal approval workflow, not as production-grade permitting automation.
 
 ## Business Model
 
-The likely model is a B2G SaaS subscription for ORP cities and municipal transport departments, with setup fees for data integration and optional regional reporting. Value comes from fewer badly timed closures, lower social delay costs, better coordination with public transport, and reusable data collection over time.
+The likely go-to-market is B2G SaaS for ORP cities and municipal transport departments, with setup fees for local data integration and optional regional reporting. The value is fewer badly timed closures, lower social delay costs, better bus reliability, and a reusable evidence base for future transport planning.
