@@ -1,6 +1,6 @@
 # Uzavírka AI
 
-Uzavírka AI is a local MVP for municipal road-closure decision support in Středočeský kraj. It does not simulate traffic or predict exact detour routes. It estimates the risk of a planned road or lane closure and recommends whether to approve it, approve with mitigation, reschedule it, or reject it without major changes.
+Uzavírka AI is a local MVP for municipal road-closure decision support in Středočeský kraj. It estimates the risk of a planned road or lane closure, builds a small local road graph around the selected segment, and shows the likely direction of detour pressure. It is a decision-support simulator for officials, not a production navigation engine or a validated full-city traffic model.
 
 ## Target Customer
 
@@ -41,9 +41,13 @@ The officer enters:
 - closure type
 - whether a bus route is affected
 
-The app returns a risk score from 0 to 100, a risk class, a recommendation, ranked reasons, a baseline comparison, better time windows, a simple ROI estimate, confidence, and an ethics note.
+The app returns a risk score from 0 to 100, a risk class, a recommendation, ranked reasons, baseline comparison, better time windows, a simple ROI estimate, confidence, network impact metrics, likely detour paths, and an ethics note.
 
-The map route picker is interactive: the user clicks two snap points on a full map preview. The app treats those clicks as snapped points on the nearest demo road line. If both points resolve to the same demo road segment, that segment is used for prediction. If the selection cannot be resolved, the app falls back to city-average matching with lower confidence. Current route geometries are lightweight demo lines around the selected city; production should replace them with real road geometry and true GIS snapping.
+The map route picker is interactive: the user clicks two snap points on a full map preview. The app treats those clicks as snapped points on the nearest local graph segment. If both points resolve to the same segment, that segment is used for prediction. The red layer is the closed segment, orange shows affected graph edges, and green shows the recomputed detour path. Current route geometries are deterministic local demo geometries built from the available `usek_id` rows and city coordinates; production should replace them with real road geometry and true GIS snapping.
+
+## Network Impact
+
+For the selected closure, the app compares the baseline shortest path with a recomputed path after removing the closed edge from a local `networkx` graph. It reports affected edges, added distance, added travel time, and the share of sampled routes that become unreachable. Edge weights use distance plus available speed, flow, and vehicle-volume indicators.
 
 ## Risk Score
 
