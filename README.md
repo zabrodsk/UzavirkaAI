@@ -4,31 +4,82 @@
 
 # Uzavirka AI
 
-**From permit guesswork to risk-ranked closure decisions in 60 seconds.**
-
-Uzavirka AI is a first-place hackathon project from the AI Startup track at the Czech AI Olympiad regional round. It is a decision-support simulator for municipal road closures: an officer picks the planned closure, the app scores the risk, explains the drivers, finds a better time window, and shows the likely detour pressure on a map.
-
-Built for **Stredocesky kraj**. Piloted on **Mlada Boleslav**. Designed to scale to every ORP city that approves roadworks, repairs, and temporary closures.
-
 <p align="center">
-  <a href="assets/uzavirka-ai-demo.mp4"><strong>Watch demo</strong></a>
-  ·
-  <a href="assets/uzavirka-ai-pitchdeck.pdf"><strong>Open pitch deck</strong></a>
-  ·
-  <a href="TECHNICAL_OVERVIEW.md"><strong>Read technical overview</strong></a>
-  ·
-  <a href="https://www.aiolympiada.cz/krajska-kola"><strong>Competition page</strong></a>
+  <img alt="AI Olympiad 1st place" src="https://img.shields.io/badge/AI%20Olympiad-1st%20place-D9381E?style=for-the-badge&labelColor=0F0F0F">
+  <img alt="B2G SaaS" src="https://img.shields.io/badge/B2G-SaaS-F1EEE7?style=for-the-badge&labelColor=D9381E&color=F1EEE7">
+  <img alt="Pilot Mlada Boleslav" src="https://img.shields.io/badge/Pilot-Mlada%20Boleslav-77746F?style=for-the-badge&labelColor=0F0F0F">
+  <img alt="Streamlit demo" src="https://img.shields.io/badge/Demo-Streamlit-D9381E?style=for-the-badge&labelColor=0F0F0F">
 </p>
 
-## The Problem
+<h3 align="center">From permit guesswork to risk-ranked closure decisions in 60 seconds.</h3>
 
-Road closures are approved with too much fragmented context. A transport officer may know the location and the planned time, but the real decision depends on traffic intensity, peak-hour pressure, public transport alternatives, P+R capacity, safety risk, and whether a reasonable detour exists.
+<p align="center">
+  <strong>Pick the closure.</strong>
+  Score the risk.
+  See the reason.
+  Move it to a better window.
+  Show the detour before the city feels it.
+</p>
 
-Bad timing turns a necessary repair into avoidable congestion.
+<p align="center">
+  Built for <strong>Stredocesky kraj</strong>.
+  Piloted on <strong>Mlada Boleslav</strong>.
+  Designed for every ORP city approving roadworks, repairs, and temporary closures.
+</p>
+
+<p align="center">
+  <a href="assets/uzavirka-ai-demo.mp4"><img alt="Watch demo" src="https://img.shields.io/badge/Watch%20demo-0F0F0F?style=for-the-badge"></a>
+  <a href="assets/uzavirka-ai-pitchdeck.pdf"><img alt="Open pitch deck" src="https://img.shields.io/badge/Open%20pitch%20deck-D9381E?style=for-the-badge"></a>
+  <a href="TECHNICAL_OVERVIEW.md"><img alt="Technical overview" src="https://img.shields.io/badge/Technical%20overview-77746F?style=for-the-badge"></a>
+  <a href="https://www.aiolympiada.cz/krajska-kola"><img alt="Competition page" src="https://img.shields.io/badge/Competition%20page-F1EEE7?style=for-the-badge&labelColor=D9381E&color=F1EEE7"></a>
+</p>
+
+## One Closure In, A Decision Out
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <strong>01 / Input</strong><br><br>
+      City, road, planned hour, duration, closure type, bus impact, and two map clicks for START and END.
+    </td>
+    <td width="33%" valign="top">
+      <strong>02 / AI Check</strong><br><br>
+      Traffic vulnerability score, safety pressure, weak alternatives, external context, and route-graph detour impact.
+    </td>
+    <td width="33%" valign="top">
+      <strong>03 / Decision</strong><br><br>
+      Approve, approve with mitigation, reschedule, or reject until the plan changes.
+    </td>
+  </tr>
+</table>
 
 ```text
-wrong closure window = wasted commuter hours + delayed buses + political heat
+bad closure window -> delayed buses + wasted commuter hours + angry calls
+Uzavirka AI        -> score + reasons + better time + visible detour
 ```
+
+## Why This Is Not Another Map App
+
+Most navigation tools help drivers after a closure exists. Uzavirka AI helps the city before the closure is approved.
+
+| Google Maps answers | Uzavirka AI answers |
+| --- | --- |
+| How should this driver reroute now? | Should the municipality approve this closure at this time? |
+| What is the fastest route today? | Which closure window creates the least public cost? |
+| What does traffic look like? | Which risk drivers make this permit dangerous? |
+| Individual trip optimization | Municipal approval decision support |
+
+## The Hackathon Wedge
+
+The product is intentionally narrow enough to demo and real enough to buy:
+
+| Constraint | Choice |
+| --- | --- |
+| First buyer | Municipal transport department / ORP city |
+| First geography | Mlada Boleslav, Stredocesky kraj |
+| First repeated workflow | Planned closure approval |
+| First AI value | Explainable risk score and better-window recommendation |
+| First visual proof | OSM-backed START/END closure picker and recomputed detour |
 
 ## The Product
 
