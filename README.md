@@ -43,6 +43,8 @@ The officer enters:
 
 The app returns a risk score from 0 to 100, a risk class, a recommendation, ranked reasons, a baseline comparison, better time windows, a simple ROI estimate, confidence, and an ethics note.
 
+The map route picker is interactive: the user clicks two snap points on a full map preview. The app treats those clicks as snapped points on the nearest demo road line. If both points resolve to the same demo road segment, that segment is used for prediction. If the selection cannot be resolved, the app falls back to city-average matching with lower confidence. Current route geometries are lightweight demo lines around the selected city; production should replace them with real road geometry and true GIS snapping.
+
 ## Risk Score
 
 The MVP uses transparent traffic-vulnerability scoring. Components include:
