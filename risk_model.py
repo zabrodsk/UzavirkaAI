@@ -142,25 +142,66 @@ def _components(row: pd.Series | dict[str, Any], duration_hours: float) -> dict[
             f"Kapacita P+R je {pr_capacity:.0f}; slabší parkovací alternativa zvyšuje skóre.",
         ),
         "Délka uzavírky": (
-            clamp(duration_hours / 8 * 100),
+            clamp((duration_hours**0.55) / (8**0.55) * 100),
             0.12,
-            f"Délka uzavírky je {duration_hours:.1f} hod.",
+            f"Aktivní rozsah uzavírky je {duration_hours:.1f} hod.; dlouhé uzavírky jsou v riziku tlumené, aby samotná délka nepřebila dopravní kontext.",
         ),
     }
 
 
-def estimate_roi(row: pd.Series | dict[str, Any], duration_hours: float, risk_class: str, value_of_time_czk_h: float = 200) -> dict[str, float]:
+def estimate_traffic_forecast(
+    row: pd.Series | dict[str, Any],
+    duration_hours: float,
+    risk_class: str,
+    route_extra_time_min: float = 0,
+    route_extra_distance_km: float = 0,
+    confidence: float = 0.75,
+) -> dict[str, float]:
     vehicles = safe_float(row, "pocet_vozidel_h", 180)
-    affected_people = vehicles * duration_hours * 1.2
-    delay_minutes = RISK_CLASS_DELAYS[risk_class]
-    social_loss = affected_people * (delay_minutes / 60) * value_of_time_czk_h
+    active_hours = max(0.5, float(duration_hours))
+    affected_trips = vehicles * active_hours
+    affected_people = affected_trips * 1.2
+    delay_minutes = max(RISK_CLASS_DELAYS[risk_class], float(route_extra_time_min or 0))
+    person_delay_hours_base = affected_people * delay_minutes / 60
+    uncertainty = 0.35 if active_hours <= 12 else 0.45
+    extra_distance = max(0.0, float(route_extra_distance_km or 0))
     return {
+        "affected_trips": round(affected_trips, 0),
         "affected_people": round(affected_people, 0),
-        "delay_minutes": delay_minutes,
-        "value_of_time_czk_h": value_of_time_czk_h,
-        "estimated_social_loss_czk": round(social_loss, 0),
-        "possible_savings_30pct_czk": round(social_loss * 0.30, 0),
+        "delay_minutes_per_trip": round(delay_minutes, 1),
+        "person_delay_hours_low": round(person_delay_hours_base * (1 - uncertainty), 1),
+        "person_delay_hours_base": round(person_delay_hours_base, 1),
+        "person_delay_hours_high": round(person_delay_hours_base * (1 + uncertainty), 1),
+        "extra_vehicle_km": round(affected_trips * extra_distance, 1),
+        "forecast_confidence": round(clamp(confidence, 0.35, 0.9), 2),
+        "avoidable_delay_hours_30pct": round(person_delay_hours_base * 0.30, 1),
     }
+
+
+def network_impact_adjustment(route_impact: Any | None) -> tuple[float, RiskReason | None]:
+    if route_impact is None:
+        return 0.0, None
+    extra_time = max(0.0, float(getattr(route_impact, "extra_time_min", 0) or 0))
+    unreachable_share = max(0.0, float(getattr(route_impact, "unreachable_share", 0) or 0))
+    if extra_time <= 0 and unreachable_share <= 0:
+        return 0.0, None
+    adjustment = min(10.0, extra_time * 0.8 + unreachable_share * 10)
+    reason = RiskReason(
+        "Dopad objížďky",
+        round(adjustment, 1),
+        f"Vybraný úsek přidává v lokální simulaci přibližně {extra_time:.1f} min; bez spojení {unreachable_share:.0%}.",
+    )
+    return adjustment, reason
+
+
+def external_context_adjustment(summary: Any | None) -> tuple[float, RiskReason | None]:
+    if summary is None:
+        return 0.0, None
+    adjustment = min(5.0, max(0.0, float(getattr(summary, "risk_adjustment", 0) or 0)))
+    reason_text = getattr(summary, "reason", None)
+    if adjustment <= 0:
+        return 0.0, None
+    return adjustment, RiskReason("Externí dopravní kontext", round(adjustment, 1), str(reason_text))
 
 
 def score_closure(
@@ -168,7 +209,8 @@ def score_closure(
     duration_hours: float,
     closure_type: str,
     affects_bus_route: bool,
-    value_of_time_czk_h: float = 200,
+    route_impact: Any | None = None,
+    external_summary: Any | None = None,
 ) -> RiskResult:
     duration_hours = max(0.5, float(duration_hours))
     multiplier = CLOSURE_MULTIPLIERS.get(closure_type, 1.0)
@@ -186,6 +228,16 @@ def score_closure(
         score += 8
         reason_rows.append(RiskReason("Dopad na autobus", 8.0, "Uzavírka ovlivňuje autobusovou linku nebo spolehlivost zastávek."))
 
+    network_adjustment, network_reason = network_impact_adjustment(route_impact)
+    if network_reason:
+        score += network_adjustment
+        reason_rows.append(network_reason)
+
+    external_adjustment, external_reason = external_context_adjustment(external_summary)
+    if external_reason:
+        score += external_adjustment
+        reason_rows.append(external_reason)
+
     final_score = int(round(clamp(score)))
     risk_class = classify_risk(final_score)
     present_fields = sum(1 for key in ("pocet_vozidel_h", "index_plynulosti_0_100", "prum_rychlost_kmh", "riziko_kolize_0_100", "spoju_den", "kapacita_pr") if key in row and not pd.isna(row[key]))
@@ -198,7 +250,14 @@ def score_closure(
         reasons=sorted(reason_rows, key=lambda item: item.contribution, reverse=True),
         baseline_class=baseline_class(safe_float(row, "hodina", 12)),
         confidence=confidence,
-        roi=estimate_roi(row, duration_hours, risk_class, value_of_time_czk_h),
+        roi=estimate_traffic_forecast(
+            row,
+            duration_hours,
+            risk_class,
+            route_extra_time_min=float(getattr(route_impact, "extra_time_min", 0) or 0),
+            route_extra_distance_km=float(getattr(route_impact, "extra_distance_km", 0) or 0),
+            confidence=confidence,
+        ),
     )
 
 

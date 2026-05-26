@@ -52,6 +52,16 @@ class RouteImpact:
     detour_routes: pd.DataFrame
 
 
+@dataclass(frozen=True)
+class SnappedRoadPoint:
+    road_id: str
+    road_name: str
+    index: int
+    lat: float
+    lon: float
+    snap_distance_km: float
+
+
 def build_road_network(
     city: str,
     segment_labels: list[str],
@@ -198,6 +208,151 @@ def analyze_closure(network: RoadNetwork, closed_segment: str | None) -> RouteIm
     )
 
 
+def snap_osm_road_point(osm_roads: list[dict], lat: float, lon: float) -> SnappedRoadPoint | None:
+    best: SnappedRoadPoint | None = None
+    target = (float(lat), float(lon))
+    for road in osm_roads:
+        coords = road.get("coords") or []
+        for index, coord in enumerate(coords):
+            if len(coord) < 2:
+                continue
+            point = (float(coord[0]), float(coord[1]))
+            distance = _distance_km(target, point)
+            if best is None or distance < best.snap_distance_km:
+                best = SnappedRoadPoint(
+                    road_id=str(road.get("id", "")),
+                    road_name=str(road.get("name") or road.get("id") or "OSM road"),
+                    index=index,
+                    lat=point[0],
+                    lon=point[1],
+                    snap_distance_km=round(distance, 4),
+                )
+    return best
+
+
+def update_snap_clicks(clicks: list[SnappedRoadPoint], new_snap: SnappedRoadPoint | None) -> list[SnappedRoadPoint]:
+    if new_snap is None:
+        return clicks[:2]
+    if len(clicks) >= 2:
+        return [new_snap]
+    return [*clicks, new_snap]
+
+
+def osm_closure_path(osm_roads: list[dict], start: SnappedRoadPoint, end: SnappedRoadPoint) -> list[tuple[float, float]]:
+    if start.road_id != end.road_id:
+        return []
+    road = _road_by_id(osm_roads, start.road_id)
+    if not road:
+        return []
+    coords = [(float(lat), float(lon)) for lat, lon in road.get("coords", [])]
+    if not coords:
+        return []
+    lo = max(0, min(start.index, end.index))
+    hi = min(len(coords) - 1, max(start.index, end.index))
+    if lo == hi:
+        hi = min(len(coords) - 1, lo + 1)
+        lo = max(0, hi - 1)
+    path = coords[lo : hi + 1]
+    if start.index > end.index:
+        path = list(reversed(path))
+    return path
+
+
+def analyze_osm_closure(
+    osm_roads: list[dict],
+    start: SnappedRoadPoint | None,
+    end: SnappedRoadPoint | None,
+    traffic_data: pd.DataFrame | None = None,
+    city: str = MLADA_BOLESLAV,
+) -> RouteImpact:
+    if start is None or end is None:
+        return _empty_impact("")
+    closed_label = _osm_closed_label(start, end)
+    closure_path = osm_closure_path(osm_roads, start, end)
+    if start.road_id != end.road_id or len(closure_path) < 2:
+        return _empty_impact(closed_label)
+
+    graph, edges = _osm_graph_from_roads(osm_roads, traffic_data, city)
+    source = _coord_node(start.lat, start.lon)
+    target = _coord_node(end.lat, end.lon)
+    closed_edge_ids = _edge_ids_for_osm_path(start.road_id, closure_path)
+    closed_edges = edges[edges["edge_id"].isin(closed_edge_ids)].copy()
+    if closed_edges.empty:
+        closed_edges = pd.DataFrame(
+            [
+                {
+                    "edge_id": f"{start.road_id}:closure",
+                    "route_id": start.road_id,
+                    "segment_label": closed_label,
+                    "road_role": "closure",
+                    "source": source,
+                    "target": target,
+                    "path": [[lon, lat] for lat, lon in closure_path],
+                    "distance_km": round(_path_distance_km(closure_path), 3),
+                    "travel_time_min": round(_path_distance_km(closure_path) / 35 * 60, 2),
+                }
+            ]
+        )
+    else:
+        closed_edges["road_role"] = "closure"
+        closed_edges["segment_label"] = closed_label
+
+    try:
+        baseline_nodes = nx.shortest_path(graph, source, target, weight="travel_time_min")
+        baseline_edges = _edges_for_node_path(graph, baseline_nodes)
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        baseline_edges = []
+
+    graph_without_closure = graph.copy()
+    for edge_id in closed_edge_ids:
+        edge = edges[edges["edge_id"] == edge_id]
+        for _, row in edge.iterrows():
+            if graph_without_closure.has_edge(str(row["source"]), str(row["target"])):
+                graph_without_closure.remove_edge(str(row["source"]), str(row["target"]))
+            if graph_without_closure.has_edge(str(row["target"]), str(row["source"])):
+                graph_without_closure.remove_edge(str(row["target"]), str(row["source"]))
+
+    unreachable = 0
+    detour_edge_rows: list[dict[str, Any]] = []
+    try:
+        detour_nodes = nx.shortest_path(graph_without_closure, source, target, weight="travel_time_min")
+        detour_edge_rows = _edges_for_node_path(graph_without_closure, detour_nodes)
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        unreachable = 1
+
+    baseline_distance = sum(float(edge["distance_km"]) for edge in baseline_edges) or _path_distance_km(closure_path)
+    baseline_time = sum(float(edge["travel_time_min"]) for edge in baseline_edges) or baseline_distance / 35 * 60
+    detour_distance = sum(float(edge["distance_km"]) for edge in detour_edge_rows)
+    detour_time = sum(float(edge["travel_time_min"]) for edge in detour_edge_rows)
+    extra_distance = max(0.0, detour_distance - baseline_distance) if detour_edge_rows else 0.0
+    extra_time = max(0.0, detour_time - baseline_time) if detour_edge_rows else 0.0
+    detour_path = _join_paths([edge["path"] for edge in detour_edge_rows])
+    impacted_frame = _dedupe_edges(pd.DataFrame(detour_edge_rows))
+    detours = pd.DataFrame(
+        [
+            {
+                "route_id": start.road_id,
+                "segment_label": closed_label,
+                "path": detour_path,
+                "extra_distance_km": round(extra_distance, 2),
+                "extra_time_min": round(extra_time, 1),
+            }
+        ]
+        if detour_path
+        else [],
+    )
+    return RouteImpact(
+        closed_segment=closed_label,
+        affected_edges=int(len(impacted_frame)),
+        extra_distance_km=round(extra_distance, 2),
+        extra_time_min=round(extra_time, 1),
+        unreachable_share=float(unreachable),
+        closure_edges=closed_edges,
+        impacted_edges=impacted_frame,
+        detour_routes=detours,
+    )
+
+
 def _edge(
     route_id: str,
     segment_label: str,
@@ -224,6 +379,73 @@ def _edge(
         "distance_km": round(distance_km, 3),
         "travel_time_min": round(distance_km / speed_kmh * 60, 2),
     }
+
+
+def _road_by_id(osm_roads: list[dict], road_id: str) -> dict | None:
+    for road in osm_roads:
+        if str(road.get("id")) == str(road_id):
+            return road
+    return None
+
+
+def _osm_closed_label(start: SnappedRoadPoint, end: SnappedRoadPoint) -> str:
+    return f"{start.road_name} ({start.road_id}:{start.index}-{end.index})"
+
+
+def _coord_node(lat: float, lon: float) -> str:
+    return f"{float(lat):.7f},{float(lon):.7f}"
+
+
+def _edge_ids_for_osm_path(road_id: str, path: list[tuple[float, float]]) -> set[str]:
+    ids = set()
+    for index in range(1, len(path)):
+        a = _coord_node(*path[index - 1])
+        b = _coord_node(*path[index])
+        ids.add(f"{road_id}:{a}->{b}")
+        ids.add(f"{road_id}:{b}->{a}")
+    return ids
+
+
+def _osm_graph_from_roads(osm_roads: list[dict], traffic_data: pd.DataFrame | None, city: str) -> tuple[nx.DiGraph, pd.DataFrame]:
+    graph = nx.DiGraph()
+    rows: list[dict[str, Any]] = []
+    stats = _segment_stats(traffic_data, city, "")
+    speed_kmh = max(15.0, stats["speed_kmh"] * (stats["flow_index"] / 100))
+    for road in osm_roads:
+        road_id = str(road.get("id", "osm-road"))
+        road_name = str(road.get("name") or road_id)
+        coords = []
+        for coord in road.get("coords", []):
+            if len(coord) >= 2:
+                coords.append((float(coord[0]), float(coord[1])))
+        for index in range(1, len(coords)):
+            start = coords[index - 1]
+            end = coords[index]
+            distance = _distance_km(start, end)
+            source = _coord_node(*start)
+            target = _coord_node(*end)
+            path = [[start[1], start[0]], [end[1], end[0]]]
+            row = {
+                "edge_id": f"{road_id}:{source}->{target}",
+                "route_id": road_id,
+                "segment_label": road_name,
+                "road_role": "osm_road",
+                "source": source,
+                "target": target,
+                "path": path,
+                "distance_km": round(distance, 4),
+                "travel_time_min": round(distance / speed_kmh * 60, 3),
+            }
+            rows.append(row)
+            graph.add_edge(source, target, **row)
+            reverse = row.copy()
+            reverse["edge_id"] = f"{road_id}:{target}->{source}"
+            reverse["source"] = target
+            reverse["target"] = source
+            reverse["path"] = list(reversed(path))
+            rows.append(reverse)
+            graph.add_edge(target, source, **reverse)
+    return graph, pd.DataFrame(rows)
 
 
 def _snap_rows(route_id: str, label: str, path: list[tuple[float, float]]) -> list[dict[str, Any]]:
